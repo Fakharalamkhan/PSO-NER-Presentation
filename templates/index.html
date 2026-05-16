@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Tagging & NER — Live Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .fade-enter {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .fade-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 300ms ease-in-out, transform 300ms ease-in-out;
+        }
+        /* Color themes for POS */
+        .pos-NOUN { background-color: #DBEAFE; color: #1E40AF; border-color: #BFDBFE; }
+        .pos-VERB { background-color: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+        .pos-ADJ { background-color: #DCFCE7; color: #166534; border-color: #86EFAC; }
+        .pos-ADV { background-color: #FCE7F3; color: #9D174D; border-color: #FBCFE8; }
+        .pos-PROPN { background-color: #EDE9FE; color: #5B21B6; border-color: #DDD6FE; }
+        .pos-OTHER { background-color: #F3F4F6; color: #1F2937; border-color: #E5E7EB; }
+        
+        /* Color themes for NER */
+        .ner-PERSON { background-color: #E9D5FF; color: #5B21B6; }
+        .ner-ORG { background-color: #FEF3C7; color: #B45309; }
+        .ner-GPE { background-color: #DCFCE7; color: #166534; }
+        .ner-DATE { background-color: #DBEAFE; color: #1D4ED8; }
+        .ner-MONEY { background-color: #FECACA; color: #991B1B; }
+        .ner-LOC { background-color: #CCFBF1; color: #0F766E; }
+        .ner-OTHER { background-color: #E5E7EB; color: #111827; }
+        
+        /* Highlighting table rows */
+        .bio-b { background-color: #EEF2FF; font-weight: 600; }
+        .bio-i { background-color: #EFF6FF; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header bar -->
+    <header class="bg-indigo-700 text-white p-6 shadow-md">
+        <div class="container mx-auto max-w-5xl">
+            <h1 class="text-3xl font-bold">POS Tagging & NER — Live Demo</h1>
+            <p class="text-indigo-200 text-lg mt-1">Developer Group | 20.05</p>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto max-w-5xl p-6">
+        
+        <!-- Input section -->
+        <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+            <div id="error-message" class="hidden mb-4 p-4 bg-red-50 text-red-700 border border-red-200 rounded-lg"></div>
+            
+            <textarea id="sentence-input" rows="3" 
+                class="w-full text-2xl p-4 border border-gray-300 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none"
+                placeholder="Type a sentence and press Analyse..."></textarea>
+            
+            <div class="flex items-center justify-between mt-4">
+                <div class="flex items-center space-x-4">
+                    <select id="task-select" class="text-lg p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="pos">POS Tagging</option>
+                        <option value="ner">NER</option>
+                    </select>
+                </div>
+                <button id="analyse-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-semibold py-3 px-8 rounded-lg shadow transition-colors flex items-center">
+                    <span id="btn-text">Analyse</span>
+                    <svg id="btn-spinner" class="hidden animate-spin ml-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+            </div>
+        </section>
+
+        <!-- Step navigator -->
+        <section id="step-navigator" class="hidden mb-6">
+            <div class="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+                <div id="pills-container" class="flex space-x-2">
+                    <!-- Pills injected via JS -->
+                </div>
+                <button id="next-btn" class="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded-lg font-medium transition-colors ml-4 whitespace-nowrap">
+                    Next
+                </button>
+            </div>
+        </section>
+
+        <!-- Step panel (main area) -->
+        <section id="step-panel" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[300px]">
+            <div id="step-content" class="fade-enter">
+                <!-- Content injected via JS -->
+            </div>
+            <div id="step-note" class="mt-8 p-4 bg-blue-50 text-blue-800 rounded-lg text-lg italic border-l-4 border-blue-400">
+                <!-- Note injected via JS -->
+            </div>
+        </section>
+
+        <!-- Audience interaction panel -->
+        <section class="mt-12 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <details class="group">
+                <summary class="flex justify-between items-center font-medium cursor-pointer list-none text-xl text-gray-700">
+                    <span>Try these with your audience</span>
+                    <span class="transition group-open:rotate-180">
+                        <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
+                    </span>
+                </summary>
+                <div class="text-gray-600 mt-4">
+                    <ul class="space-y-3">
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Jordan scored 50 points for the Chicago Bulls."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Jordan scored 50 points for the Chicago Bulls.', 'ner')">Load &rarr;</button>
+                        </li>
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Apple released a new product in Cupertino."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Apple released a new product in Cupertino.', 'ner')">Load &rarr;</button>
+                        </li>
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Angela Merkel met EU officials in Brussels last Tuesday."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Angela Merkel met EU officials in Brussels last Tuesday.', 'ner')">Load &rarr;</button>
+                        </li>
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Tesla's stock rose 10% after Elon Musk's announcement."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Tesla\'s stock rose 10% after Elon Musk\'s announcement.', 'ner')">Load &rarr;</button>
+                        </li>
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Amazon invested €1.2 billion in Germany in 2024."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Amazon invested €1.2 billion in Germany in 2024.', 'ner')">Load &rarr;</button>
+                        </li>
+                        <li class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 transition">
+                            <span class="text-lg">"Victoria won the race in Melbourne, Australia."</span>
+                            <button class="text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1 rounded bg-indigo-50 hover:bg-indigo-100 whitespace-nowrap ml-4" onclick="loadSuggestion('Victoria won the race in Melbourne, Australia.', 'ner')">Load &rarr;</button>
+                        </li>
+                    </ul>
+                </div>
+            </details>
+        </section>
+
+    </main>
+
+    <script>
+        // State
+        let currentData = null;
+        let currentStepIndex = 0;
+
+        // DOM Elements
+        const sentenceInput = document.getElementById('sentence-input');
+        const taskSelect = document.getElementById('task-select');
+        const analyseBtn = document.getElementById('analyse-btn');
+        const btnText = document.getElementById('btn-text');
+        const btnSpinner = document.getElementById('btn-spinner');
+        const errorMessage = document.getElementById('error-message');
+        
+        const stepNavigator = document.getElementById('step-navigator');
+        const pillsContainer = document.getElementById('pills-container');
+        const nextBtn = document.getElementById('next-btn');
+        
+        const stepPanel = document.getElementById('step-panel');
+        const stepContent = document.getElementById('step-content');
+        const stepNote = document.getElementById('step-note');
+
+        // Event Listeners
+        analyseBtn.addEventListener('click', performAnalysis);
+        nextBtn.addEventListener('click', nextStep);
+        sentenceInput.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                performAnalysis();
+            }
+        });
+
+        // Functions
+        function loadSuggestion(sentence, task) {
+            sentenceInput.value = sentence;
+            taskSelect.value = task;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            sentenceInput.focus();
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+
+        async function performAnalysis() {
+            const sentence = sentenceInput.value.trim();
+            const task = taskSelect.value;
+
+            if (!sentence) {
+                showError("Please enter a sentence to analyse.");
+                return;
+            }
+
+            hideError();
+            btnText.textContent = "Analysing...";
+            btnSpinner.classList.remove('hidden');
+            analyseBtn.disabled = true;
+            
+            // Reset UI
+            stepNavigator.classList.add('hidden');
+            stepPanel.classList.add('hidden');
+
+            try {
+                const response = await fetch('/analyse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sentence, task })
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || "Failed to process request");
+                }
+
+                currentData = data;
+                currentStepIndex = 0;
+                
+                renderPills();
+                renderCurrentStep();
+                
+                stepNavigator.classList.remove('hidden');
+                stepPanel.classList.remove('hidden');
+                
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                btnText.textContent = "Analyse";
+                btnSpinner.classList.add('hidden');
+                analyseBtn.disabled = false;
+            }
+        }
+
+        function renderPills() {
+            pillsContainer.innerHTML = '';
+            currentData.steps.forEach((step, index) => {
+                const pill = document.createElement('div');
+                pill.className = `px-4 py-2 rounded-full text-sm font-bold border whitespace-nowrap ${getPillStyle(index)}`;
+                
+                let content = step.label;
+                if (index < currentStepIndex) {
+                    content = `<svg class="inline w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${step.label}`;
+                } else if (index === currentStepIndex) {
+                    content = `<span class="mr-1 opacity-75">${index+1}.</span>${step.label}`;
+                }
+                
+                pill.innerHTML = content;
+                pillsContainer.appendChild(pill);
+            });
+        }
+
+        function getPillStyle(index) {
+            if (index < currentStepIndex) {
+                return 'bg-green-100 text-green-800 border-green-200'; // Completed
+            } else if (index === currentStepIndex) {
+                return 'bg-indigo-600 text-white border-indigo-600 shadow-md'; // Active
+            } else {
+                return 'bg-gray-100 text-gray-500 border-gray-200'; // Upcoming
+            }
+        }
+
+        function nextStep() {
+            if (currentStepIndex < currentData.steps.length - 1) {
+                currentStepIndex++;
+                
+                // Animate transition
+                stepContent.classList.remove('fade-enter-active');
+                
+                setTimeout(() => {
+                    renderPills();
+                    renderCurrentStep();
+                    stepContent.classList.add('fade-enter-active');
+                }, 50);
+                
+                if (currentStepIndex === currentData.steps.length - 1) {
+                    nextBtn.textContent = "Next";
+                    nextBtn.classList.replace('bg-gray-800', 'bg-indigo-600');
+                    nextBtn.classList.replace('hover:bg-gray-900', 'hover:bg-indigo-700');
+                }
+            } else {
+                // Reset for new sentence
+                sentenceInput.focus();
+                sentenceInput.select();
+                stepNavigator.classList.add('hidden');
+                stepPanel.classList.add('hidden');
+                nextBtn.textContent = "Next";
+                nextBtn.classList.replace('bg-indigo-600', 'bg-gray-800');
+                nextBtn.classList.replace('hover:bg-indigo-700', 'hover:bg-gray-900');
+            }
+        }
+
+        function getPosColorClass(pos) {
+            const mapping = {
+                'NOUN': 'pos-NOUN',
+                'VERB': 'pos-VERB',
+                'ADJ': 'pos-ADJ',
+                'ADV': 'pos-ADV',
+                'PROPN': 'pos-PROPN'
+            };
+            return mapping[pos] || 'pos-OTHER';
+        }
+
+        function getNerColorClass(label) {
+            const mapping = {
+                'PERSON': 'ner-PERSON',
+                'ORG': 'ner-ORG',
+                'GPE': 'ner-GPE',
+                'DATE': 'ner-DATE',
+                'MONEY': 'ner-MONEY',
+                'LOC': 'ner-LOC'
+            };
+            return mapping[label] || 'ner-OTHER';
+        }
+
+        function renderCurrentStep() {
+            const step = currentData.steps[currentStepIndex];
+            const task = currentData.task;
+            
+            let html = '';
+            let note = '';
+
+            if (step.id === 'input') {
+                html = `<div class="text-3xl font-medium text-gray-800 border-l-8 border-indigo-500 pl-6 py-4 bg-gray-50 rounded-r-lg">"${step.sentence}"</div>`;
+                note = "The model receives a plain string. Before any analysis can happen it must be broken into tokens.";
+            } 
+            else if (step.id === 'tokenize') {
+                html = `<div class="flex flex-wrap gap-4 mt-4">`;
+                step.tokens.forEach(t => {
+                    html += `
+                    <div class="flex flex-col items-center">
+                        <div class="px-4 py-2 bg-white border-2 border-gray-300 rounded-lg text-xl font-mono shadow-sm">${t.text}</div>
+                        <div class="text-sm text-gray-500 mt-1 font-mono">[${t.index}]</div>
+                    </div>`;
+                });
+                html += `</div>`;
+                note = "Each word and punctuation mark becomes a separate token with an index. This is what the model actually sees.";
+            }
+            else if (step.id === 'pos_tags') {
+                html = `<div class="flex flex-wrap gap-4 mt-4">`;
+                step.tagged.forEach(t => {
+                    const colorCls = getPosColorClass(t.pos);
+                    html += `
+                    <div class="flex flex-col items-center">
+                        <div class="px-4 py-2 bg-white border border-gray-200 rounded-t-lg text-xl font-mono shadow-sm w-full text-center">${t.text}</div>
+                        <div class="px-4 py-1 ${colorCls} border border-t-0 rounded-b-lg text-sm font-bold w-full text-center" title="${t.explanation}">${t.pos}</div>
+                    </div>`;
+                });
+                html += `</div>`;
+                note = "The neural network assigns a grammatical role to each token based on its form and surrounding context.";
+            }
+            else if (step.id === 'bio_tags') {
+                html = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b-2 border-gray-300 text-gray-700 text-lg">
+                                <th class="p-3">Token</th>
+                                <th class="p-3">BIO Label</th>
+                                <th class="p-3">Tag</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                step.bio.forEach(t => {
+                    let rowClass = '';
+                    let badgeClass = 'bg-gray-100 text-gray-600';
+                    let bioPrefix = t.bio.split('-')[0];
+                    let bioType = t.bio.split('-')[1] || '';
+                    
+                    if (bioPrefix === 'B') {
+                        rowClass = 'bio-b border-l-4 border-indigo-500';
+                        badgeClass = getNerColorClass(bioType);
+                    } else if (bioPrefix === 'I') {
+                        rowClass = 'bio-i border-l-4 border-indigo-300';
+                        badgeClass = getNerColorClass(bioType);
+                    } else {
+                        rowClass = 'border-l-4 border-transparent';
+                    }
+
+                    html += `
+                    <tr class="border-b border-gray-200 ${rowClass}">
+                        <td class="p-3 text-lg font-mono">${t.text}</td>
+                        <td class="p-3 font-bold text-gray-800">${t.bio}</td>
+                        <td class="p-3">
+                            <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${badgeClass}">${bioPrefix === 'O' ? 'NONE' : bioType}</span>
+                        </td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+                note = "B = beginning of entity. I = inside (continuation). O = outside. This is how the model marks entity boundaries.";
+            }
+            else if (step.id === 'result' && task === 'pos') {
+                html = `<div class="flex flex-wrap gap-4 mt-4 mb-8">`;
+                step.tagged.forEach(t => {
+                    const colorCls = getPosColorClass(t.pos);
+                    html += `
+                    <div class="flex flex-col items-center">
+                        <div class="px-4 py-2 bg-white border border-gray-200 rounded-t-lg text-xl font-mono shadow-sm w-full text-center">${t.text}</div>
+                        <div class="px-4 py-1 ${colorCls} border border-t-0 rounded-b-lg text-sm font-bold w-full text-center" title="${t.explanation}">${t.pos}</div>
+                        <div class="text-xs text-gray-500 mt-1">${t.tag}</div>
+                    </div>`;
+                });
+                html += `</div>`;
+                
+                // Add metric cards
+                const nouns = (step.counts['NOUN'] || 0) + (step.counts['PROPN'] || 0);
+                const verbs = step.counts['VERB'] || 0;
+                const propn = step.counts['PROPN'] || 0;
+                const total = step.tagged.length;
+                
+                html += `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-gray-200">
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center shadow-sm">
+                        <div class="text-4xl font-bold text-blue-700">${nouns}</div>
+                        <div class="text-blue-900 font-medium mt-1">Total Nouns</div>
+                    </div>
+                    <div class="bg-amber-50 p-4 rounded-xl border border-amber-100 text-center shadow-sm">
+                        <div class="text-4xl font-bold text-amber-700">${verbs}</div>
+                        <div class="text-amber-900 font-medium mt-1">Verbs</div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 text-center shadow-sm">
+                        <div class="text-4xl font-bold text-purple-700">${propn}</div>
+                        <div class="text-purple-900 font-medium mt-1">Proper Nouns</div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center shadow-sm">
+                        <div class="text-4xl font-bold text-gray-700">${total}</div>
+                        <div class="text-gray-900 font-medium mt-1">Total Tokens</div>
+                    </div>
+                </div>`;
+                
+                note = "Final POS Tagging Result. The model has classified every token into its syntactic role.";
+            }
+            else if (step.id === 'result' && task === 'ner') {
+                // Construct highlighted sentence
+                let renderHtml = '';
+                let lastIdx = 0;
+                const sentenceStr = step.sentence;
+                
+                // Sort entities by start_char just in case
+                const sortedEnts = [...step.entities].sort((a,b) => a.start_char - b.start_char);
+                
+                sortedEnts.forEach(ent => {
+                    renderHtml += sentenceStr.substring(lastIdx, ent.start_char);
+                    const colorCls = getNerColorClass(ent.label);
+                    renderHtml += `<mark class="${colorCls} px-2 py-1 rounded font-medium relative group cursor-help transition-colors">
+                        ${ent.text}
+                        <span class="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-[11px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">${ent.label}</span>
+                    </mark>`;
+                    lastIdx = ent.end_char;
+                });
+                renderHtml += sentenceStr.substring(lastIdx);
+                
+                html = `
+                <div class="text-3xl leading-relaxed bg-white border border-gray-200 p-8 rounded-xl shadow-inner mb-8 mt-4">
+                    ${renderHtml}
+                </div>`;
+                
+                // Render entities list/legend
+                if (step.entities.length > 0) {
+                    html += `<h3 class="text-xl font-bold text-gray-800 mb-4">Detected Entities (${step.entities.length})</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
+                    
+                    step.entities.forEach(ent => {
+                        const colorCls = getNerColorClass(ent.label);
+                        html += `
+                        <div class="flex items-start p-3 border border-gray-200 rounded-lg bg-gray-50 shadow-sm transition hover:shadow">
+                            <span class="${colorCls} px-2 py-1 rounded text-xs font-bold mr-3 mt-0.5">${ent.label}</span>
+                            <div>
+                                <div class="font-bold text-gray-900 text-lg">${ent.text}</div>
+                                <div class="text-xs text-gray-500 mt-1 uppercase tracking-wider">${ent.explanation}</div>
+                            </div>
+                        </div>`;
+                    });
+                    html += `</div>`;
+                } else {
+                    html += `<div class="p-6 bg-gray-50 text-gray-500 text-center rounded-lg border border-gray-200 text-lg">No named entities detected in this sentence.</div>`;
+                }
+                
+                note = "Final NER Result. The sequence of BIO tags is merged into continuous entity spans with their respective categories.";
+            }
+
+            stepContent.innerHTML = html;
+            stepNote.innerHTML = `<svg class="inline w-6 h-6 mr-2 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>${note}`;
+            
+            // Trigger animation
+            setTimeout(() => {
+                stepContent.classList.add('fade-enter-active');
+            }, 10);
+        }
+        
+        // Initial setup
+        stepContent.classList.add('fade-enter-active');
+    </script>
+</body>
+</html>
